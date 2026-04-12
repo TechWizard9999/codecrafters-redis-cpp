@@ -8,6 +8,15 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+namespace {
+
+std::string handleCommand(const std::string& request) {
+  (void)request;
+  return "+PONG\r\n";
+}
+
+}
+
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
@@ -50,13 +59,33 @@ int main(int argc, char **argv) {
   // You can use print statements as follows for debugging, they'll be visible when running tests.
   std::cout << "Logs from your program will appear here!\n";
 
-  if (accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len) < 0) {
+  int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+  if (client_fd < 0) {
     std::cerr << "accept failed\n";
     close(server_fd);
     return 1;
   }
 
   std::cout << "Client connected\n";
+  char buffer[1024];
+  ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer));
+  if (bytes_read < 0) {
+    std::cerr << "read failed\n";
+    close(client_fd);
+    close(server_fd);
+    return 1;
+  }
+
+  std::string request(buffer, bytes_read);
+  std::string response = handleCommand(request);
+  if (write(client_fd, response.c_str(), response.size()) < 0) {
+    std::cerr << "write failed\n";
+    close(client_fd);
+    close(server_fd);
+    return 1;
+  }
+
+  close(client_fd);
   close(server_fd);
 
   return 0;
