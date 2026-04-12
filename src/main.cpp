@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   
-  struct sockaddr_in server_addr;
+  struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(6379);
@@ -43,19 +43,21 @@ int main(int argc, char **argv) {
     return 1;
   }
   
-  struct sockaddr_in client_addr;
-  int client_addr_len = sizeof(client_addr);
+  struct sockaddr_in client_addr{};
+  socklen_t client_addr_len = sizeof(client_addr);
   std::cout << "Waiting for a client to connect...\n";
 
   // You can use print statements as follows for debugging, they'll be visible when running tests.
   std::cout << "Logs from your program will appear here!\n";
 
-  // Uncomment the code below to pass the first stage
-  // 
-  // accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  // std::cout << "Client connected\n";
-  // 
-  // close(server_fd);
+  if (accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len) < 0) {
+    std::cerr << "accept failed\n";
+    close(server_fd);
+    return 1;
+  }
+
+  std::cout << "Client connected\n";
+  close(server_fd);
 
   return 0;
 }
