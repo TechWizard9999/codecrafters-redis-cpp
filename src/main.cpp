@@ -1,5 +1,16 @@
 #include <iostream>
-#include "server.h"
+#include <memory>
+#include "server/server.h"
+#include "server/request_handler.h"
+#include "event_loop/event_loop.h"
+
+class PingHandler : public RequestHandler {
+public:
+  std::string handle(const std::string& request) override {
+    (void)request;
+    return "+PONG\r\n";
+  }
+};
 
 int main(int argc, char **argv) {
   (void)argc;
@@ -9,18 +20,21 @@ int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  Server server;
+  auto handler = std::make_shared<PingHandler>();
+  EventLoop loop;
+  if (!loop.init()) {
+    return 1;
+  }
+
+  Server server(&loop, handler);
   if (!server.start()) {
     return 1;
   }
 
-  std::cout << "Waiting for a client to connect...\n";
+  std::cout << "Server started. Waiting for clients to connect...\n";
   std::cout << "Logs from your program will appear here!\n";
 
-  if (!server.acceptClient()) {
-    return 1;
-  }
+  loop.run();
 
-  std::cout << "Client connected\n";
-  return server.handleClientSession() ? 0 : 1;
+  return 0;
 }

@@ -1,9 +1,13 @@
 #include "server.h"
+#include "request_handler.h"
+#include "../event_loop/event_loop.h"
+#include "client_connection.h"
 
 #include <iostream>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 namespace {
 
@@ -12,8 +16,13 @@ constexpr int kConnectionBacklog = 5;
 
 }
 
+Server::Server(EventLoop* loop, std::shared_ptr<RequestHandler> handler) 
+  : loop_(loop), handler_(std::move(handler)) {}
+
 Server::~Server() {
-  closeSocket(client_fd_);
+  if (server_fd_ >= 0) {
+    loop_->removeAllEvents(server_fd_);
+  }
   closeSocket(server_fd_);
 }
 
@@ -23,6 +32,10 @@ bool Server::start() {
     std::cerr << "Failed to create server socket\n";
     return false;
   }
+
+  // Set non-blocking
+  int flags = fcntl(server_fd_, F_GETFL, 0);
+  fcntl(server_fd_, F_SETFL, flags | O_NONBLOCK);
 
   int reuse = 1;
   if (setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
@@ -48,63 +61,33 @@ bool Server::start() {
     return false;
   }
 
+  // Register server socket with the event loop for reading (incoming connections)
+  loop_->addReadEvent(server_fd_, this);
+
   return true;
 }
 
-bool Server::acceptClient() {
+void Server::handleRead() {
   sockaddr_in client_addr{};
   socklen_t client_addr_len = sizeof(client_addr);
-  client_fd_ = accept(server_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_addr_len);
-  if (client_fd_ < 0) {
-    std::cerr << "accept failed\n";
-    return false;
-  }
-
-  return true;
-}
-
-bool Server::handleClientSession() {
-  while (true) {
-    std::string request = readRequest();
-    if (request.empty()) {
-      return true;
-    }
-
-    std::string response = handleCommand(request);
-    if (!writeResponse(response)) {
-      return false;
-    }
+  int client_fd = accept(server_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_addr_len);
+  
+  if (client_fd >= 0) {
+    // Set client socket to non-blocking
+    int flags = fcntl(client_fd, F_GETFL, 0);
+    fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+    
+    // Create new connection state. It registers itself to the event loop.
+    new ClientConnection(client_fd, loop_, handler_);
+    std::cout << "Client connected (FD " << client_fd << ")\n";
+  } else {
+    // Typically EWOULDBLOCK, handle it gracefully by just returning
+    // std::cerr << "accept failed\n";
   }
 }
 
-std::string Server::readRequest() const {
-  char buffer[1024];
-  ssize_t bytes_read = read(client_fd_, buffer, sizeof(buffer));
-  if (bytes_read < 0) {
-    std::cerr << "read failed\n";
-    return {};
-  }
-
-  if (bytes_read == 0) {
-    return {};
-  }
-
-  return {buffer, static_cast<std::size_t>(bytes_read)};
-}
-
-std::string Server::handleCommand(const std::string& request) const {
-  (void)request;
-  return "+PONG\r\n";
-}
-
-bool Server::writeResponse(const std::string& response) const {
-  ssize_t bytes_written = write(client_fd_, response.c_str(), response.size());
-  if (bytes_written < 0) {
-    std::cerr << "write failed\n";
-    return false;
-  }
-
-  return static_cast<std::size_t>(bytes_written) == response.size();
+void Server::handleWrite() {
+  // Server socket doesn't write.
 }
 
 void Server::closeSocket(int& fd) const {
