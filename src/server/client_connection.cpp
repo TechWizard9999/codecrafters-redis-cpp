@@ -12,7 +12,7 @@ ClientConnection::ClientConnection(int fd, EventLoop* loop, std::shared_ptr<Requ
 }
 
 ClientConnection::~ClientConnection() {
-  loop_->removeAllEvents(fd_);
+  loop_->removeAllEvents(fd_, this);
   close(fd_);
 }
 
@@ -44,7 +44,7 @@ void ClientConnection::handleRead() {
 
 void ClientConnection::handleWrite() {
   if (write_buffer_.empty()) {
-    loop_->removeWriteEvent(fd_);
+    loop_->removeWriteEvent(fd_, this);
     return;
   }
 
@@ -52,7 +52,7 @@ void ClientConnection::handleWrite() {
   if (bytes_written > 0) {
     write_buffer_.erase(0, bytes_written);
     if (write_buffer_.empty()) {
-      loop_->removeWriteEvent(fd_);
+      loop_->removeWriteEvent(fd_, this);
     }
   } else if (bytes_written < 0) {
     // Write error

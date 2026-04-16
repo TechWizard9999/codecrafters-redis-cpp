@@ -21,7 +21,7 @@ Server::Server(EventLoop* loop, std::shared_ptr<RequestHandler> handler)
 
 Server::~Server() {
   if (server_fd_ >= 0) {
-    loop_->removeAllEvents(server_fd_);
+    loop_->removeAllEvents(server_fd_, this);
   }
   closeSocket(server_fd_);
 }
